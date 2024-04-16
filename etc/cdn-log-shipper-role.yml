@@ -1,4 +1,3 @@
-# etc/cloudwatch-data-sharing-role.yml
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >-
   Creates a role to be used by all Dovetail CDN log shipper Lambda functions.
