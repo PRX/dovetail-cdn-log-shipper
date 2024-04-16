@@ -1,0 +1,196 @@
+# NOTE: as the source LogBucket exists outside of this stack, you must create
+# the S3 Event Notification trigger must be created manually.  Just select the
+# "All object create events" option, and fill in the bucket/prefix.
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+
+Description: >-
+  Reads CloudFront logs from a Dovetail3 CDN and processes them. Anonymizes IP
+  addresses and does other transformations. The resulting files are written to
+  a separate S3 bucket for 3rd party usage.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: S3 Configuration
+        Parameters:
+          - LogBucket
+          - LogPrefix
+          - DestinationBucket
+          - DestinationPrefix
+          - EnvironmentType
+      - Label:
+          default: Data Filters
+        Parameters:
+          - PodcastIds
+    ParameterLabels:
+      LogBucket:
+        default: Bucket where CloudFront is logging
+      LogPrefix:
+        default: Path where logs are located
+      DestinationBucket:
+        default: Bucket to write processed log files
+      DestinationPrefix:
+        default: Path within destination
+      EnvironmentType:
+        default: Environment type
+      PodcastIds:
+        default: Podcast IDs to include
+
+Parameters:
+  LogBucket:
+    Type: String
+    Description: eg. some-bucket-name
+  LogPrefix:
+    Type: String
+    Description: eg. some/path/here
+  DestinationBucket:
+    Type: CommaDelimitedList
+    Description: eg. some-bucket-name
+  DestinationPrefix:
+    Type: String
+    Description: eg. some/path/here (a trailing slash is always added)
+  EnvironmentType:
+    Type: String
+    AllowedValues:
+      - Testing
+      - Staging
+      - Production
+  EnvironmentTypeAbbreviation:
+    Type: String
+    AllowedValues:
+      - test
+      - stag
+      - prod
+  PodcastIds:
+    Type: String
+    Description: eg. 32,85,158,99
+
+Resources:
+  ShipperFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/shipper
+      Description: >-
+        Process log files written by a Dovetail3 CDN and write them to a
+        destination S3 bucket.
+      Environment:
+        Variables:
+          DESTINATION_BUCKET: !Join [",", !Ref DestinationBucket]
+          DESTINATION_PREFIX: !Ref DestinationPrefix
+          PODCAST_IDS: !Ref PodcastIds
+      Handler: index.handler
+      MemorySize: 768
+      Policies:
+        - Statement:
+            - Action:
+                - s3:GetObject
+                - s3:GetObjectVersion
+              Effect: Allow
+              Resource: !Sub arn:aws:s3:::${LogBucket}/${LogPrefix}/*
+              Sid: AllowCdnLogRead
+          Version: "2012-10-17"
+        - Statement:
+            - Action: s3:ListBucketMultipartUploads
+              Effect: Allow
+              # Resource: !Sub arn:aws:s3:::${DestinationBucket}
+              # Wrap each item in the list in: arn:aws:s3:::${item}/*
+              Resource: !Split
+                - ","
+                - !Sub
+                  - "arn:aws:s3:::${inner}"
+                  - inner: !Join
+                      - ",arn:aws:s3:::"
+                      - Ref: DestinationBucket
+              Sid: AllowDestinationBucketList
+            - Action:
+                - s3:AbortMultipartUpload
+                - s3:ListMultipartUploadParts
+                - s3:PutObject*
+              Effect: Allow
+              # Resource: !Sub arn:aws:s3:::${DestinationBucket}/${DestinationPrefix}/*
+              # Wrap each item in the list in: arn:aws:s3:::${item}/*
+              Resource: !Split
+                - ","
+                - !Sub
+                  - "arn:aws:s3:::${inner}/*"
+                  - inner: !Join
+                      - "/*,arn:aws:s3:::"
+                      - Ref: DestinationBucket
+              Sid: AllowDestinationObjectWrite
+          Version: "2012-10-17"
+      Runtime: nodejs16.x
+      Tags:
+        prx:meta:tagging-version: "2021-04-07"
+        prx:cloudformation:stack-name: !Ref AWS::StackName
+        prx:cloudformation:stack-id: !Ref AWS::StackId
+        prx:ops:environment: !Ref EnvironmentType
+        prx:dev:family: Dovetail
+        prx:dev:application: Log Shipper
+      Timeout: 45
+  # TODO s3 trigger
+  ShipperFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ShipperFunction}
+      RetentionInDays: 30
+      Tags:
+        - { Key: prx:meta:tagging-version, Value: "2021-04-07" }
+        - { Key: prx:cloudformation:stack-name, Value: !Ref AWS::StackName }
+        - { Key: prx:cloudformation:stack-id, Value: !Ref AWS::StackId }
+        - { Key: prx:ops:environment, Value: !Ref EnvironmentType }
+        - { Key: prx:dev:family, Value: Dovetail }
+        - { Key: prx:dev:application, Value: Log Shipper }
+  ShipperFunctionElevatedErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ERROR [Dovetail-Log Shipper] Lambda function <${EnvironmentTypeAbbreviation}> INVOCATIONS ERRORS
+      AlarmDescription: !Sub >-
+        ${EnvironmentType} Dovetail Log Shipper Lambda function is failing, so
+        Magellan may not be receiving log data
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref ShipperFunction
+      EvaluationPeriods: 1
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Period: 60
+      Statistic: Sum
+      Tags:
+        - { Key: prx:meta:tagging-version, Value: "2021-04-07" }
+        - { Key: prx:cloudformation:stack-name, Value: !Ref AWS::StackName }
+        - { Key: prx:cloudformation:stack-id, Value: !Ref AWS::StackId }
+        - { Key: prx:ops:environment, Value: !Ref EnvironmentType }
+        - { Key: prx:dev:family, Value: Dovetail }
+        - { Key: prx:dev:application, Value: Log Shipper }
+      Threshold: 0
+      TreatMissingData: notBreaching
+  ShipperFunctionNotRunningAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ERROR [Dovetail-Log Shipper] Lambda function <${EnvironmentTypeAbbreviation}> NOT RUNNING
+      AlarmDescription: !Sub >-
+        ${EnvironmentType} Dovetail Log Shipper Lambda function has not run in
+        a while, so Magellan may not be receiving log data.
+      ComparisonOperator: LessThanOrEqualToThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref ShipperFunction
+      EvaluationPeriods: 1
+      MetricName: Invocations
+      Namespace: AWS/Lambda
+      Period: 10800 # 3 hours
+      Statistic: Sum
+      Tags:
+        - { Key: prx:meta:tagging-version, Value: "2021-04-07" }
+        - { Key: prx:cloudformation:stack-name, Value: !Ref AWS::StackName }
+        - { Key: prx:cloudformation:stack-id, Value: !Ref AWS::StackId }
+        - { Key: prx:ops:environment, Value: !Ref EnvironmentType }
+        - { Key: prx:dev:family, Value: Dovetail }
+        - { Key: prx:dev:application, Value: Log Shipper }
+      Threshold: 0
+      TreatMissingData: notBreaching
