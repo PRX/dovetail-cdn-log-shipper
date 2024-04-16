@@ -1,0 +1,41 @@
+# sam build && sam deploy
+
+version = 0.1
+
+[default.deploy.parameters]
+profile = "prx-legacy"
+stack_name = "cdn-log-shipper-staging"
+s3_prefix = "cdn-log-shipper-staging"
+confirm_changeset = false
+resolve_s3 = true
+capabilities = "CAPABILITY_IAM"
+region = "us-east-1"
+# Parameter overrides only need to be included when a parameter is changing
+# parameter_overrides = [
+#   "LogBucket=",
+#   "LogPrefix=",
+#   "DestinationBucket=",
+#   "DestinationPrefix=",
+#   "EnvironmentType=",
+#   "EnvironmentTypeAbbreviation=",
+#   "PodcastIds=",
+# ]
+
+[production.deploy.parameters]
+profile = "prx-legacy"
+stack_name = "cdn-log-shipper-production"
+s3_prefix = "cdn-log-shipper-production"
+confirm_changeset = true
+resolve_s3 = true
+capabilities = "CAPABILITY_IAM"
+region = "us-east-1"
+# Parameter overrides only need to be included when a parameter is changing
+# parameter_overrides = [
+#   "LogBucket=",
+#   "LogPrefix=",
+#   "DestinationBucket=",
+#   "DestinationPrefix=",
+#   "EnvironmentType=",
+#   "EnvironmentTypeAbbreviation=",
+#   "PodcastIds=",
+# ]
