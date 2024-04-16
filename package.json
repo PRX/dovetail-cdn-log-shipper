@@ -19,5 +19,8 @@
     "eslint-plugin-prettier": "*",
     "prettier": "*",
     "typescript": "*"
+  },
+  "dependencies": {
+    "aws-sdk": "*"
   }
 }
