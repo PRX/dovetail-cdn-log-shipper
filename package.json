@@ -1,0 +1,23 @@
+{
+  "name": "dovetail-cdn-log-shipper",
+  "version": "1.0.0",
+  "private": "true",
+  "engines": {
+    "node": ">= 20.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/PRX/dovetail-cdn-log-shipper.git"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "*",
+    "@types/node": "*",
+    "eslint": "^8",
+    "eslint-config-airbnb-base": "*",
+    "eslint-config-prettier": "*",
+    "eslint-plugin-import": "*",
+    "eslint-plugin-prettier": "*",
+    "prettier": "*",
+    "typescript": "*"
+  }
+}
