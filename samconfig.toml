@@ -1,7 +1,7 @@
-# sam build && sam deploy
 
 version = 0.1
 
+# sam build && sam deploy
 [default.deploy.parameters]
 profile = "prx-legacy"
 stack_name = "cdn-log-shipper-staging"
@@ -21,6 +21,7 @@ region = "us-east-1"
 #   "PodcastIds=",
 # ]
 
+# sam build && sam deploy --config-env=prod
 [production.deploy.parameters]
 profile = "prx-legacy"
 stack_name = "cdn-log-shipper-production"
