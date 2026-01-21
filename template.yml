@@ -71,6 +71,7 @@ Resources:
   ShipperFunction:
     Type: AWS::Serverless::Function
     Properties:
+      Architectures: [arm64]
       CodeUri: src/shipper
       Description: >-
         Process log files written by a Dovetail3 CDN and write them to a
@@ -120,7 +121,7 @@ Resources:
                       - Ref: DestinationBucket
               Sid: AllowDestinationObjectWrite
           Version: "2012-10-17"
-      Runtime: nodejs16.x
+      Runtime: nodejs24.x
       Tags:
         prx:meta:tagging-version: "2021-04-07"
         prx:cloudformation:stack-name: !Ref AWS::StackName

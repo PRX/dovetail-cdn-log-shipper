@@ -1,5 +1,13 @@
-const AWS = require("aws-sdk");
-const s3 = new AWS.S3();
+import {
+  S3Client,
+  GetObjectCommand,
+  PutObjectCommand,
+} from "@aws-sdk/client-s3";
+import { NodeHttpHandler } from "@smithy/node-http-handler";
+
+const requestHandler = new NodeHttpHandler({ connectionTimeout: 1000 });
+const s3 = new S3Client({ requestHandler });
+
 const zlib = require("zlib");
 const util = require("util");
 const gunzip = util.promisify(zlib.gunzip);
@@ -62,8 +70,9 @@ exports.handler = async (event) => {
   for (const rec of event.Records) {
     const Bucket = rec.s3.bucket.name;
     const Key = rec.s3.object.key;
-    const result = await s3.getObject({ Bucket, Key }).promise();
-    const log = await gunzip(result.Body);
+    const result = await s3.send(new GetObjectCommand({ Bucket, Key }));
+    const bodyBuffer = await result.Body.transformToByteArray();
+    const log = await gunzip(bodyBuffer);
     const rows = log
       .toString("utf-8")
       .split("\n")
@@ -157,18 +166,19 @@ exports.handler = async (event) => {
     // send to s3 destinations
     const bucket_names = process.env.DESTINATION_BUCKET.split(",");
     for (const bucket_name of bucket_names) {
-      const params = {
-        Bucket: bucket_name,
-        Key: `${process.env.DESTINATION_PREFIX}/${Key.split("/").pop()}`,
-        ACL: "bucket-owner-full-control",
-        Body: buffer,
-      };
       if (datas.length > 0) {
-        await s3.putObject(params).promise();
+        await s3.send(
+          new PutObjectCommand({
+            Bucket: bucket_name,
+            Key: `${process.env.DESTINATION_PREFIX}/${Key.split("/").pop()}`,
+            Body: buffer,
+            ACL: "bucket-owner-full-control",
+          }),
+        );
       }
 
       console.info(
-        `Shipped ${datas.length} of ${rows.length} to s3://${params.Bucket}/${params.Key}`,
+        `Shipped ${datas.length} of ${rows.length} to s3://${bucket_name}/${process.env.DESTINATION_PREFIX}/${Key.split("/").pop()}`,
       );
     }
   }
