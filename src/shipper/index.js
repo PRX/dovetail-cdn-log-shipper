@@ -3,10 +3,8 @@ import {
   GetObjectCommand,
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
-import { NodeHttpHandler } from "@smithy/node-http-handler";
 
-const requestHandler = new NodeHttpHandler({ connectionTimeout: 1000 });
-const s3 = new S3Client({ requestHandler });
+const s3 = new S3Client({});
 
 const zlib = require("zlib");
 const util = require("util");
