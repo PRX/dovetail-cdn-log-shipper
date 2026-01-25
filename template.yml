@@ -37,6 +37,10 @@ Metadata:
         default: Environment type
       PodcastIds:
         default: Podcast IDs to include
+      ConfigBucket:
+        default: S3 Bucket for configuration JSON
+      ConfigKey:
+        default: S3 Key for configuration JSON
 
 Parameters:
   LogBucket:
@@ -66,6 +70,12 @@ Parameters:
   PodcastIds:
     Type: String
     Description: eg. 32,85,158,99
+  ConfigBucket:
+    Type: String
+    Description: S3 Bucket containing the configuration JSON file
+  ConfigKey:
+    Type: String
+    Description: S3 Key (path) to the configuration JSON file
 
 Resources:
   ShipperFunction:
@@ -78,12 +88,18 @@ Resources:
         destination S3 bucket.
       Environment:
         Variables:
-          DESTINATION_BUCKET: !Join [",", !Ref DestinationBucket]
-          DESTINATION_PREFIX: !Ref DestinationPrefix
-          PODCAST_IDS: !Ref PodcastIds
+          CONFIG_BUCKET: !Ref ConfigBucket
+          CONFIG_KEY: !Ref ConfigKey
       Handler: index.handler
       MemorySize: 768
       Policies:
+        - Statement:
+            - Action:
+                - s3:GetObject
+              Effect: Allow
+              Resource: !Sub arn:aws:s3:::${ConfigBucket}/${ConfigKey}
+              Sid: AllowConfigRead
+          Version: "2012-10-17"
         - Statement:
             - Action:
                 - s3:GetObject
