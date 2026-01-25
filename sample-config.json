@@ -4,13 +4,15 @@
     "PODCAST_IDS": [32, 85, 158, 99],
     "DESTINATION_BUCKET": ["your-destination-bucket-1", "your-destination-bucket-2"],
     "DESTINATION_PREFIX": "processed-logs",
-    "IGNORE_PATHS": ["/", "/favicon.ico", "/robots.txt"]
+    "IGNORE_PATHS": ["/", "/favicon.ico", "/robots.txt"],
+    "FULL_IPS": false
   },
   {
     "SECRET_KEY": "another-secret-key",
     "PODCAST_IDS": [10, 20],
     "DESTINATION_BUCKET": ["another-destination-bucket"],
     "DESTINATION_PREFIX": "another-processed-logs",
-    "IGNORE_PATHS": ["/healthcheck"]
+    "IGNORE_PATHS": ["/healthcheck"],
+    "FULL_IPS": true
   }
 ]

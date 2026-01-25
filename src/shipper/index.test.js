@@ -407,4 +407,82 @@ describe("handler", () => {
       }
     });
   });
+
+  test("should not mask IPs when FULL_IPS is true", async () => {
+    const mockConfig = [
+      {
+        PODCAST_IDS: [1],
+        IGNORE_PATHS: [],
+        SECRET_KEY: "test-secret",
+        DESTINATION_BUCKET: ["destination-bucket-full-ips"],
+        DESTINATION_PREFIX: "processed-full-ips-logs",
+        FULL_IPS: true,
+      },
+    ];
+    const configBuffer = Buffer.from(JSON.stringify(mockConfig), "utf-8");
+
+    s3Mock
+      .on(GetObjectCommand, {
+        Bucket: "test-config-bucket",
+        Key: "test-config.json",
+      })
+      .resolves({
+        Body: sdkStreamMixin(Readable.from([configBuffer])),
+      });
+
+    const mockLogContent = `
+#Version: 1.0
+#Fields: date time x-edge-location sc-bytes c-ip cs-method cs(Host) cs-uri-stem cs-uri-query sc-status cs(Referer) cs(User-Agent) cs-uri-stem(truncated) cs-uri-query(truncated) x-forwarded-for
+2023-01-01\t00:00:00\tLHR50\t100\t192.168.1.1\tGET\texample.com\t/1/episode-a-guid/arr1/file.mp3\t-\t200\t-\tMozilla/5.0\t/1/episode-a-guid/arr1/file.mp3\t-\t203.0.113.4, 198.51.100.1
+2023-01-01\t00:00:00\tLHR50\t100\t2001:0db8:85a3:0000:0000:8a2e:0370:7334\tGET\texample.com\t/1/episode-d-guid/arr1/file.mp3\t-\t200\t-\tMozilla/5.0\t/1/episode-d-guid/arr1/file.mp3\t-\t-`;
+
+    const gzippedLogBuffer = await gzip(
+      new Uint8Array(Buffer.from(mockLogContent, "utf-8")),
+    );
+
+    s3Mock
+      .on(GetObjectCommand, {
+        Bucket: "source-bucket",
+        Key: "logs/test-full-ips-log.gz",
+      })
+      .resolves({
+        Body: sdkStreamMixin(Readable.from([gzippedLogBuffer])),
+      });
+
+    const s3Event = {
+      Records: [
+        {
+          s3: {
+            bucket: { name: "source-bucket" },
+            object: { key: "logs/test-full-ips-log.gz" },
+          },
+        },
+      ],
+    };
+
+    await handler(s3Event);
+
+    expect(s3Mock.call(2).args[0].input.Bucket).toBe(
+      "destination-bucket-full-ips",
+    );
+    expect(s3Mock.call(2).args[0].input.Key).toBe(
+      "processed-full-ips-logs/test-full-ips-log.gz",
+    );
+
+    const processedBuffer = s3Mock.call(2).args[0].input.Body;
+    const gunzippedProcessed = await gunzip(processedBuffer);
+    const processedContent = gunzippedProcessed.toString("utf-8");
+
+    // Expect the IPv4 and IPv6 addresses to NOT be masked
+    expect(processedContent).toContain("192.168.1.1");
+    expect(processedContent).toContain("203.0.113.4, 198.51.100.1");
+    expect(processedContent).toContain(
+      "2001:0db8:85a3:0000:0000:8a2e:0370:7334",
+    );
+
+    // Make sure we're not accidentally masking them anyway
+    expect(processedContent).not.toContain("192.168.1.0");
+    expect(processedContent).not.toContain("203.0.113.0, 198.51.100.0");
+    expect(processedContent).not.toContain("2001:0db8:85a3:0000::");
+  });
 });

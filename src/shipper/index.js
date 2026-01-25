@@ -192,16 +192,18 @@ export const handler = async (event) => {
       currentFields.push("prx-hashed-ip");
 
       // mask IP addresses
-      datas.forEach((data) => {
-        data["c-ip"] = maskIp(data["c-ip"], "c-ip");
-        const xffParts = (data["x-forwarded-for"] || "")
-          .split(",")
-          .map((s) => s.trim())
-          .filter((s) => s);
-        data["x-forwarded-for"] = xffParts
-          .map((ip) => maskIp(ip, "x-forwarded-for"))
-          .join(", ");
-      });
+      if (!currentConfig.FULL_IPS) {
+        datas.forEach((data) => {
+          data["c-ip"] = maskIp(data["c-ip"], "c-ip");
+          const xffParts = (data["x-forwarded-for"] || "")
+            .split(",")
+            .map((s) => s.trim())
+            .filter((s) => s);
+          data["x-forwarded-for"] = xffParts
+            .map((ip) => maskIp(ip, "x-forwarded-for"))
+            .join(", ");
+        });
+      }
 
       // write to tsv and gzip
       const tsv =
