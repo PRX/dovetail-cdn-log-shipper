@@ -1,15 +1,55 @@
-const {
+import {
   S3Client,
   GetObjectCommand,
   PutObjectCommand,
-} = require("@aws-sdk/client-s3");
-const s3 = new S3Client({});
+} from "@aws-sdk/client-s3";
+const s3Client = new S3Client({});
 
-const zlib = require("zlib");
-const util = require("util");
+import zlib from "zlib";
+import util from "util";
+import crypto from "crypto";
+
 const gunzip = util.promisify(zlib.gunzip);
 const gzip = util.promisify(zlib.gzip);
-const crypto = require("crypto");
+
+let cachedConfigs;
+
+export const s3 = s3Client;
+
+export const resetCachedConfigs = () => {
+  cachedConfigs = undefined;
+};
+
+export const loadConfigs = async () => {
+  if (cachedConfigs) {
+    return cachedConfigs;
+  }
+
+  const configBucket = process.env.CONFIG_BUCKET;
+  const configKey = process.env.CONFIG_KEY;
+
+  if (!configBucket || !configKey) {
+    throw new Error(
+      "CONFIG_BUCKET and CONFIG_KEY environment variables must be set.",
+    );
+  }
+
+  try {
+    console.log(
+      `Loading configurations from s3://${configBucket}/${configKey}`,
+    );
+    const { Body } = await s3Client.send(
+      new GetObjectCommand({ Bucket: configBucket, Key: configKey }),
+    );
+    const configBody = await Body.transformToString();
+    cachedConfigs = JSON.parse(configBody);
+    console.log("Configurations loaded successfully.");
+    return cachedConfigs;
+  } catch (error) {
+    console.error(`Error loading configurations from S3: ${error.message}`);
+    throw error;
+  }
+};
 
 const IPV4_MASK = /\.[0-9]{1,3}$/;
 
@@ -30,8 +70,8 @@ const maskIp = (ip, field) => {
   }
 };
 
-const hashValue = (val) => {
-  const hmac = crypto.createHmac("sha256", process.env.SECRET_KEY || "");
+const hashValue = (val, secretKey) => {
+  const hmac = crypto.createHmac("sha256", secretKey);
   hmac.update(val);
   return hmac.digest("base64").replace(/\+|\/|=/g, (m) => {
     if (m === "+") {
@@ -57,126 +97,141 @@ const findIp = (xff, ip) => {
   }
 };
 
-const PODCAST_IDS = process.env.PODCAST_IDS.split(",")
-  .map((s) => s.trim())
-  .filter((s) => s);
+export const handler = async (event) => {
+  const configs = await loadConfigs();
 
-const IGNORE_PATHS = ["/", "/favicon.ico", "/robots.txt"];
-
-exports.handler = async (event) => {
   for (const rec of event.Records) {
     const Bucket = rec.s3.bucket.name;
     const Key = rec.s3.object.key;
-    const result = await s3.send(new GetObjectCommand({ Bucket, Key }));
+    const result = await s3Client.send(new GetObjectCommand({ Bucket, Key }));
     const bodyBuffer = await result.Body.transformToByteArray();
     const log = await gunzip(bodyBuffer);
-    const rows = log
+    const initialRows = log
       .toString("utf-8")
       .split("\n")
-      .filter((r) => r)
-      .map((r) => r.split("\t"));
+      .filter((r) => r);
 
     // ensure we know what this is
-    const version = rows.shift()[0];
+    const version = initialRows[0].split("\t")[0];
     if (version !== "#Version: 1.0") {
       throw new Error(`Unsupported CloudFront Log Version: ${version}`);
     }
 
     // get fieldnames from comment
-    const fields = rows
-      .shift()[0]
-      .replace(/^#Fields: /, "")
-      .split(" ");
-    const mappedRows = rows.map((row) => {
-      return row.reduce(
-        (acc, val, idx) => ({ ...acc, [fields[idx]]: val }),
-        {},
-      );
-    });
+    const fieldsLine = initialRows[1];
+    const originalFields = fieldsLine.replace(/^#Fields: /, "").split(" ");
 
-    // podcast id and episode guid (only works for dovetail3-cdn requests)
-    const datas = mappedRows.filter((data) => {
-      const parts = data["cs-uri-stem"].split("/").filter((s) => s);
+    // Process for each configuration
+    for (const currentConfig of configs) {
+      const PODCAST_IDS = currentConfig.PODCAST_IDS;
+      const IGNORE_PATHS = currentConfig.IGNORE_PATHS || [
+        "/",
+        "/favicon.ico",
+        "/robots.txt",
+      ];
+      const SECRET_KEY = currentConfig.SECRET_KEY;
+      const DESTINATION_BUCKET = currentConfig.DESTINATION_BUCKET;
+      const DESTINATION_PREFIX = currentConfig.DESTINATION_PREFIX;
 
-      // if the path starts with a region like usw2, shift that off
-      if (parts[0] && parts[0].match(/^[a-z][a-z0-9\-]+$/)) {
-        parts.shift();
-      }
+      const rows = initialRows.slice(2).map((r) => r.split("\t"));
 
-      if (parts.length === 4) {
-        data["prx-podcast-id"] = parts[0];
-        data["prx-episode-guid"] = parts[1];
-      } else if (parts.length === 5) {
-        data["prx-podcast-id"] = parts[0];
-        data["prx-episode-guid"] = parts[2];
-      } else if (!IGNORE_PATHS.includes(data["cs-uri-stem"])) {
-        console.warn(`Non-dovetail3 uri: ${data["cs-uri-stem"]}`);
-      }
-      return PODCAST_IDS.includes(data["prx-podcast-id"]);
-    });
-    fields.push("prx-podcast-id");
-    fields.push("prx-episode-guid");
+      const mappedRows = rows.map((row) => {
+        return originalFields.reduce(
+          (acc, val, idx) => ({ ...acc, [originalFields[idx]]: row[idx] }),
+          {},
+        );
+      });
 
-    // calculate listener_ids
-    datas.forEach((data) => {
-      // use leftmost XFF or IP
-      const leftMostIp = findIp(data["x-forwarded-for"], data["c-ip"]);
+      // podcast id and episode guid (only works for dovetail3-cdn requests)
+      const datas = mappedRows.filter((data) => {
+        const parts = data["cs-uri-stem"].split("/").filter((s) => s);
 
-      // truncate ipv6 but not ipv4
-      const truncatedIp = leftMostIp.includes(":")
-        ? maskIp(leftMostIp, "listener-id")
-        : leftMostIp;
+        // if the path starts with a region like usw2, shift that off
+        if (parts[0] && parts[0].match(/^[a-z][a-z0-9\-]+$/)) {
+          parts.shift();
+        }
 
-      // combine with UA string
-      const userAgent = data["cs(User-Agent)"] || "";
-      data["prx-listener-id"] = hashValue(truncatedIp + userAgent);
+        if (parts.length === 4) {
+          data["prx-podcast-id"] = parts[0];
+          data["prx-episode-guid"] = parts[1];
+        } else if (parts.length === 5) {
+          data["prx-podcast-id"] = parts[0];
+          data["prx-episode-guid"] = parts[2];
+        } else if (!IGNORE_PATHS.includes(data["cs-uri-stem"])) {
+          console.warn(`Non-dovetail3 uri: ${data["cs-uri-stem"]}`);
+        }
+        // Ensure PODCAST_IDS are numbers for comparison if data["prx-podcast-id"] is a string
+        return PODCAST_IDS.includes(parseInt(data["prx-podcast-id"]));
+      });
 
-      // also provide just the hashed IP, use truncated ipv6
-      data["prx-hashed-ip"] = hashValue(truncatedIp);
-    });
-    fields.push("prx-listener-id");
-    fields.push("prx-hashed-ip");
+      const currentFields = [...originalFields];
+      currentFields.push("prx-podcast-id");
+      currentFields.push("prx-episode-guid");
 
-    // mask IP addresses
-    datas.forEach((data) => {
-      data["c-ip"] = maskIp(data["c-ip"], "c-ip");
-      const xffParts = (data["x-forwarded-for"] || "")
-        .split(",")
-        .map((s) => s.trim())
-        .filter((s) => s);
-      data["x-forwarded-for"] = xffParts
-        .map((ip) => maskIp(ip, "x-forwarded-for"))
-        .join(", ");
-    });
+      // calculate listener_ids
+      datas.forEach((data) => {
+        // use leftmost XFF or IP
+        const leftMostIp = findIp(data["x-forwarded-for"], data["c-ip"]);
 
-    // write to tsv and gzip
-    const tsv =
-      fields.join("\t") +
-      "\n" +
-      datas
-        .map((data) => {
-          return fields.map((f) => data[f] || "").join("\t");
-        })
-        .join("\n");
-    const buffer = await gzip(tsv);
+        // truncate ipv6 but not ipv4
+        const truncatedIp = leftMostIp.includes(":")
+          ? maskIp(leftMostIp, "listener-id")
+          : leftMostIp;
 
-    // send to s3 destinations
-    const bucket_names = process.env.DESTINATION_BUCKET.split(",");
-    for (const bucket_name of bucket_names) {
-      if (datas.length > 0) {
-        await s3.send(
-          new PutObjectCommand({
-            Bucket: bucket_name,
-            Key: `${process.env.DESTINATION_PREFIX}/${Key.split("/").pop()}`,
-            Body: buffer,
-            ACL: "bucket-owner-full-control",
-          }),
+        // combine with UA string
+        const userAgent = data["cs(User-Agent)"] || "";
+        data["prx-listener-id"] = hashValue(
+          truncatedIp + userAgent,
+          SECRET_KEY,
+        );
+
+        // also provide just the hashed IP, use truncated ipv6
+        data["prx-hashed-ip"] = hashValue(truncatedIp, SECRET_KEY);
+      });
+      currentFields.push("prx-listener-id");
+      currentFields.push("prx-hashed-ip");
+
+      // mask IP addresses
+      datas.forEach((data) => {
+        data["c-ip"] = maskIp(data["c-ip"], "c-ip");
+        const xffParts = (data["x-forwarded-for"] || "")
+          .split(",")
+          .map((s) => s.trim())
+          .filter((s) => s);
+        data["x-forwarded-for"] = xffParts
+          .map((ip) => maskIp(ip, "x-forwarded-for"))
+          .join(", ");
+      });
+
+      // write to tsv and gzip
+      const tsv =
+        currentFields.join("\t") +
+        "\n" +
+        datas
+          .map((data) => {
+            return currentFields.map((f) => data[f] || "").join("\t");
+          })
+          .join("\n");
+      const buffer = await gzip(tsv);
+
+      // send to s3 destinations
+      const bucket_names = DESTINATION_BUCKET;
+      for (const bucket_name of bucket_names) {
+        if (datas.length > 0) {
+          await s3Client.send(
+            new PutObjectCommand({
+              Bucket: bucket_name,
+              Key: `${DESTINATION_PREFIX}/${Key.split("/").pop()}`,
+              Body: buffer,
+              ACL: "bucket-owner-full-control",
+            }),
+          );
+        }
+
+        console.info(
+          `Shipped ${datas.length} of ${rows.length} to s3://${bucket_name}/${DESTINATION_PREFIX}/${Key.split("/").pop()}`,
         );
       }
-
-      console.info(
-        `Shipped ${datas.length} of ${rows.length} to s3://${bucket_name}/${process.env.DESTINATION_PREFIX}/${Key.split("/").pop()}`,
-      );
     }
   }
 };
