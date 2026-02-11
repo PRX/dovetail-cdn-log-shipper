@@ -1,3 +1,4 @@
+import { jest } from "@jest/globals";
 import { mockClient } from "aws-sdk-client-mock";
 import {
   S3Client,
@@ -6,6 +7,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { sdkStreamMixin } from "@aws-sdk/util-stream-node";
 import { Readable } from "stream";
+import nock from "nock";
 import zlib from "zlib";
 import util from "util";
 import crypto from "crypto";
@@ -16,6 +18,10 @@ const gzip = util.promisify(zlib.gzip);
 // Mock environment variables
 const ORIGINAL_CONFIG_BUCKET = process.env.CONFIG_BUCKET;
 const ORIGINAL_CONFIG_KEY = process.env.CONFIG_KEY;
+
+const configHost = "http://my.config";
+const configPath = "/destinations.json";
+process.env.CONFIG_URL = "http://my.config/destinations.json";
 
 let s3Mock;
 let s3;
@@ -38,6 +44,8 @@ beforeEach(() => {
   resetCachedConfigs();
   process.env.CONFIG_BUCKET = "test-config-bucket";
   process.env.CONFIG_KEY = "test-config.json";
+
+  jest.clearAllMocks();
 });
 
 afterAll(() => {
@@ -63,30 +71,10 @@ describe("loadConfigs", () => {
     ];
     const configBuffer = Buffer.from(JSON.stringify(mockConfig), "utf-8");
 
-    s3Mock.on(GetObjectCommand).resolves({
-      Body: sdkStreamMixin(Readable.from([configBuffer])),
-    });
+    const s1 = nock(configHost).get(configPath).reply(200, mockConfig);
 
     const configs = await loadConfigs();
     expect(configs).toEqual(mockConfig);
-    expect(s3Mock.calls().length).toBe(1);
-    expect(s3Mock.call(0).args[0].input).toEqual({
-      Bucket: "test-config-bucket",
-      Key: "test-config.json",
-    });
-  });
-
-  test("should throw error if CONFIG_BUCKET or CONFIG_KEY are not set", async () => {
-    delete process.env.CONFIG_BUCKET;
-    delete process.env.CONFIG_KEY;
-    await expect(loadConfigs()).rejects.toThrow(
-      "CONFIG_BUCKET and CONFIG_KEY environment variables must be set.",
-    );
-  });
-
-  test("should throw error if S3 GetObjectCommand fails", async () => {
-    s3Mock.on(GetObjectCommand).rejects(new Error("S3 error"));
-    await expect(loadConfigs()).rejects.toThrow("S3 error");
   });
 });
 
@@ -108,16 +96,7 @@ describe("handler", () => {
         DESTINATION_PREFIX: "processed-logs",
       },
     ];
-    const configBuffer = Buffer.from(JSON.stringify(mockConfig), "utf-8");
-
-    s3Mock
-      .on(GetObjectCommand, {
-        Bucket: "test-config-bucket",
-        Key: "test-config.json",
-      })
-      .resolves({
-        Body: sdkStreamMixin(Readable.from([configBuffer])),
-      });
+    const s1 = nock(configHost).get(configPath).reply(200, mockConfig);
 
     const mockLogContent = `
 #Version: 1.0
@@ -153,10 +132,10 @@ describe("handler", () => {
     await handler(s3Event);
 
     // Expect PutObjectCommand to be called
-    expect(s3Mock.call(2).args[0].input.Bucket).toBe("destination-bucket-1");
-    expect(s3Mock.call(2).args[0].input.Key).toBe("processed-logs/test-log.gz");
+    expect(s3Mock.call(1).args[0].input.Bucket).toBe("destination-bucket-1");
+    expect(s3Mock.call(1).args[0].input.Key).toBe("processed-logs/test-log.gz");
 
-    const processedBuffer = s3Mock.call(2).args[0].input.Body;
+    const processedBuffer = s3Mock.call(1).args[0].input.Body;
     const gunzippedProcessed = await gunzip(processedBuffer);
     const processedContent = gunzippedProcessed.toString("utf-8");
 
@@ -191,16 +170,7 @@ describe("handler", () => {
     };
 
     const combinedConfigs = [mockConfig1, mockConfig2];
-    const configBuffer = Buffer.from(JSON.stringify(combinedConfigs), "utf-8");
-
-    s3Mock
-      .on(GetObjectCommand, {
-        Bucket: "test-config-bucket",
-        Key: "test-config.json",
-      })
-      .resolves({
-        Body: sdkStreamMixin(Readable.from([configBuffer])),
-      });
+    const s1 = nock(configHost).get(configPath).reply(200, combinedConfigs);
 
     const mockLogContent = `
 #Version: 1.0
@@ -272,16 +242,7 @@ describe("handler", () => {
         DESTINATION_PREFIX: "processed-ipv6-logs",
       },
     ];
-    const configBuffer = Buffer.from(JSON.stringify(mockConfig), "utf-8");
-
-    s3Mock
-      .on(GetObjectCommand, {
-        Bucket: "test-config-bucket",
-        Key: "test-config.json",
-      })
-      .resolves({
-        Body: sdkStreamMixin(Readable.from([configBuffer])),
-      });
+    const s1 = nock(configHost).get(configPath).reply(200, mockConfig);
 
     const mockLogContent = `
 #Version: 1.0
@@ -314,12 +275,12 @@ describe("handler", () => {
 
     await handler(s3Event);
 
-    expect(s3Mock.call(2).args[0].input.Bucket).toBe("destination-bucket-ipv6");
-    expect(s3Mock.call(2).args[0].input.Key).toBe(
+    expect(s3Mock.call(1).args[0].input.Bucket).toBe("destination-bucket-ipv6");
+    expect(s3Mock.call(1).args[0].input.Key).toBe(
       "processed-ipv6-logs/test-ipv6-log.gz",
     );
 
-    const processedBuffer = s3Mock.call(2).args[0].input.Body;
+    const processedBuffer = s3Mock.call(1).args[0].input.Body;
     const gunzippedProcessed = await gunzip(processedBuffer);
     const processedContent = gunzippedProcessed.toString("utf-8");
 
@@ -338,16 +299,7 @@ describe("handler", () => {
         DESTINATION_PREFIX: "processed-xff-logs",
       },
     ];
-    const configBuffer = Buffer.from(JSON.stringify(mockConfig), "utf-8");
-
-    s3Mock
-      .on(GetObjectCommand, {
-        Bucket: "test-config-bucket",
-        Key: "test-config.json",
-      })
-      .resolves({
-        Body: sdkStreamMixin(Readable.from([configBuffer])),
-      });
+    const s1 = nock(configHost).get(configPath).reply(200, mockConfig);
 
     const mockLogContent = `
 #Version: 1.0
@@ -379,12 +331,12 @@ describe("handler", () => {
 
     await handler(s3Event);
 
-    expect(s3Mock.call(2).args[0].input.Bucket).toBe("destination-bucket-xff");
-    expect(s3Mock.call(2).args[0].input.Key).toBe(
+    expect(s3Mock.call(1).args[0].input.Bucket).toBe("destination-bucket-xff");
+    expect(s3Mock.call(1).args[0].input.Key).toBe(
       "processed-xff-logs/test-xff-log.gz",
     );
 
-    const processedBuffer = s3Mock.call(2).args[0].input.Body;
+    const processedBuffer = s3Mock.call(1).args[0].input.Body;
     const gunzippedProcessed = await gunzip(processedBuffer);
     const processedContent = gunzippedProcessed.toString("utf-8");
 
@@ -419,16 +371,7 @@ describe("handler", () => {
         FULL_IPS: true,
       },
     ];
-    const configBuffer = Buffer.from(JSON.stringify(mockConfig), "utf-8");
-
-    s3Mock
-      .on(GetObjectCommand, {
-        Bucket: "test-config-bucket",
-        Key: "test-config.json",
-      })
-      .resolves({
-        Body: sdkStreamMixin(Readable.from([configBuffer])),
-      });
+    const s1 = nock(configHost).get(configPath).reply(200, mockConfig);
 
     const mockLogContent = `
 #Version: 1.0
@@ -462,14 +405,14 @@ describe("handler", () => {
 
     await handler(s3Event);
 
-    expect(s3Mock.call(2).args[0].input.Bucket).toBe(
+    expect(s3Mock.call(1).args[0].input.Bucket).toBe(
       "destination-bucket-full-ips",
     );
-    expect(s3Mock.call(2).args[0].input.Key).toBe(
+    expect(s3Mock.call(1).args[0].input.Key).toBe(
       "processed-full-ips-logs/test-full-ips-log.gz",
     );
 
-    const processedBuffer = s3Mock.call(2).args[0].input.Body;
+    const processedBuffer = s3Mock.call(1).args[0].input.Body;
     const gunzippedProcessed = await gunzip(processedBuffer);
     const processedContent = gunzippedProcessed.toString("utf-8");
 
