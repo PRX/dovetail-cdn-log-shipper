@@ -1,4 +1,3 @@
-import { getConfig } from "./http.js";
 import {
   S3Client,
   GetObjectCommand,
@@ -26,12 +25,28 @@ export const loadConfigs = async () => {
     return cachedConfigs;
   }
 
+  const configBucket = process.env.CONFIG_BUCKET;
+  const configKey = process.env.CONFIG_KEY;
+
+  if (!configBucket || !configKey) {
+    throw new Error(
+      "CONFIG_BUCKET and CONFIG_KEY environment variables must be set.",
+    );
+  }
+
   try {
-    cachedConfigs = await getConfig();
+    console.log(
+      `Loading configurations from s3://${configBucket}/${configKey}`,
+    );
+    const { Body } = await s3Client.send(
+      new GetObjectCommand({ Bucket: configBucket, Key: configKey }),
+    );
+    const configBody = await Body.transformToString();
+    cachedConfigs = JSON.parse(configBody);
     console.log("Configurations loaded successfully.");
     return cachedConfigs;
   } catch (error) {
-    console.error(`Error loading configurations: ${error.message}`);
+    console.error(`Error loading configurations from S3: ${error.message}`);
     throw error;
   }
 };

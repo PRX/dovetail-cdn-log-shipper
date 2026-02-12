@@ -26,11 +26,7 @@
     "eslint-plugin-prettier": "*",
     "jest": "^30.2.0",
     "prettier": "*",
-    "typescript": "*",
-    "nock": "^14.0.10"
-  },
-  "dependencies": {
-    "lambda-log":"~3.1.0"
+    "typescript": "*"
   },
   "scripts": {
     "test": "NODE_OPTIONS=--experimental-vm-modules jest"
