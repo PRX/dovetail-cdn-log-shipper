@@ -18,8 +18,10 @@ Metadata:
           - LogBucket
           - LogPrefix
           - DestinationBucket
-          - DestinationPrefix
           - EnvironmentType
+          - EnvironmentTypeAbbreviation
+          - ConfigBucket
+          - ConfigKey
       - Label:
           default: Data Filters
         Parameters:
@@ -30,13 +32,11 @@ Metadata:
       LogPrefix:
         default: Path where logs are located
       DestinationBucket:
-        default: Bucket to write processed log files
-      DestinationPrefix:
-        default: Path within destination
+        default: Buckets to write processed log files (comma-separated if more than one)
       EnvironmentType:
         default: Environment type
-      PodcastIds:
-        default: Podcast IDs to include
+      EnvironmentTypeAbbreviation:
+        default: Abbreviation for environment type
       ConfigBucket:
         default: S3 Bucket for configuration JSON
       ConfigKey:
@@ -52,30 +52,28 @@ Parameters:
   DestinationBucket:
     Type: CommaDelimitedList
     Description: eg. some-bucket-name
-  DestinationPrefix:
-    Type: String
-    Description: eg. some/path/here (a trailing slash is always added)
   EnvironmentType:
     Type: String
     AllowedValues:
       - Testing
       - Staging
       - Production
+    Default: Staging
   EnvironmentTypeAbbreviation:
     Type: String
     AllowedValues:
       - test
       - stag
       - prod
-  PodcastIds:
-    Type: String
-    Description: eg. 32,85,158,99
+    Default: stag
   ConfigBucket:
     Type: String
     Description: S3 Bucket containing the configuration JSON file
+    Default: prx-dovetail
   ConfigKey:
     Type: String
     Description: S3 Key (path) to the configuration JSON file
+    Default: config/dovetail-cdn-log-shipper-config-stag.json
 
 Resources:
   ShipperFunction:
@@ -126,7 +124,7 @@ Resources:
                 - s3:ListMultipartUploadParts
                 - s3:PutObject*
               Effect: Allow
-              # Resource: !Sub arn:aws:s3:::${DestinationBucket}/${DestinationPrefix}/*
+              # Resource: !Sub arn:aws:s3:::${DestinationBucket}/*
               # Wrap each item in the list in: arn:aws:s3:::${item}/*
               Resource: !Split
                 - ","
