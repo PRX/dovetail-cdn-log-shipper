@@ -106,19 +106,23 @@ export const handler = async (event) => {
     const result = await s3Client.send(new GetObjectCommand({ Bucket, Key }));
     const bodyBuffer = await result.Body.transformToByteArray();
     const log = await gunzip(bodyBuffer);
-    const initialRows = log
+    const rows = log
       .toString("utf-8")
       .split("\n")
-      .filter((r) => r);
+      .filter((r) => r)
+      .map((r) => r.split("\t"));
+
+    // The initial rows contain metadata and fieldnames, we need to process those first
+    const initialRows = rows.slice(0, 2);
 
     // ensure we know what this is
-    const version = initialRows[0].split("\t")[0];
+    const version = initialRows[0][0];
     if (version !== "#Version: 1.0") {
       throw new Error(`Unsupported CloudFront Log Version: ${version}`);
     }
 
     // get fieldnames from comment
-    const fieldsLine = initialRows[1];
+    const fieldsLine = initialRows[1][0];
     const originalFields = fieldsLine.replace(/^#Fields: /, "").split(" ");
 
     // Process for each configuration
@@ -133,9 +137,8 @@ export const handler = async (event) => {
       const DESTINATION_BUCKET = currentConfig.DESTINATION_BUCKET;
       const DESTINATION_PREFIX = currentConfig.DESTINATION_PREFIX;
 
-      const rows = initialRows.slice(2).map((r) => r.split("\t"));
-
-      const mappedRows = rows.map((row) => {
+      // skip the initial rows, map the rest to objects with fieldnames as keys
+      const mappedRows = rows.slice(2).map((row) => {
         return originalFields.reduce(
           (acc, val, idx) => ({ ...acc, [originalFields[idx]]: row[idx] }),
           {},
