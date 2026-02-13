@@ -1,14 +1,13 @@
-import { mockClient } from "aws-sdk-client-mock";
+import { Readable } from "node:stream";
+import util from "node:util";
+import zlib from "node:zlib";
 import {
-  S3Client,
   GetObjectCommand,
   PutObjectCommand,
+  S3Client,
 } from "@aws-sdk/client-s3";
 import { sdkStreamMixin } from "@aws-sdk/util-stream-node";
-import { Readable } from "stream";
-import zlib from "zlib";
-import util from "util";
-import crypto from "crypto";
+import { mockClient } from "aws-sdk-client-mock";
 
 const gunzip = util.promisify(zlib.gunzip);
 const gzip = util.promisify(zlib.gzip);
@@ -324,7 +323,7 @@ describe("handler", () => {
     const processedContent = gunzippedProcessed.toString("utf-8");
 
     // Expect the IPv6 address to be masked
-    const expectedIpv6Regex = new RegExp(`2001:0db8:85a3:0000::`);
+    const expectedIpv6Regex = /2001:0db8:85a3:0000::/;
     expect(processedContent).toMatch(expectedIpv6Regex);
   });
 
@@ -389,10 +388,8 @@ describe("handler", () => {
     const processedContent = gunzippedProcessed.toString("utf-8");
 
     // Expect the first IP in x-forwarded-for to be used for hashing and c-ip to be masked
-    const expectedXffRegex = new RegExp(`10\.0\.0\.0`); // c-ip masked
-    const expectedXffMaskedRegex = new RegExp(
-      `203\.0\.113\.0, 198\.51\.100\.0`,
-    ); // x-forwarded-for masked
+    const expectedXffRegex = /10.0.0.0/; // c-ip masked
+    const expectedXffMaskedRegex = /203.0.113.0, 198.51.100.0/; // x-forwarded-for masked
 
     processedContent.split("\n").forEach((line) => {
       // Check if prx-listener-id and prx-hashed-ip are present, as they depend on findIp and hashValue

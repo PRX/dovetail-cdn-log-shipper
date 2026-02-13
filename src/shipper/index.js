@@ -1,13 +1,14 @@
 import {
-  S3Client,
   GetObjectCommand,
   PutObjectCommand,
+  S3Client,
 } from "@aws-sdk/client-s3";
+
 const s3Client = new S3Client({});
 
-import zlib from "zlib";
-import util from "util";
 import crypto from "crypto";
+import util from "util";
+import zlib from "zlib";
 
 const gunzip = util.promisify(zlib.gunzip);
 const gzip = util.promisify(zlib.gzip);
@@ -150,7 +151,7 @@ export const handler = async (event) => {
         const parts = data["cs-uri-stem"].split("/").filter((s) => s);
 
         // if the path starts with a region like usw2, shift that off
-        if (parts[0] && parts[0].match(/^[a-z][a-z0-9\-]+$/)) {
+        if (parts[0] && parts[0].match(/^[a-z][a-z0-9-]+$/)) {
           parts.shift();
         }
 
