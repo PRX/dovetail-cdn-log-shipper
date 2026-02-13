@@ -125,6 +125,14 @@ export const handler = async (event) => {
     const fieldsLine = initialRows[1][0];
     const originalFields = fieldsLine.replace(/^#Fields: /, "").split(" ");
 
+    // skip the initial rows, map the rest to objects with fieldnames as keys
+    const mappedRows = rows.slice(2).map((row) => {
+      return originalFields.reduce(
+        (acc, val, idx) => ({ ...acc, [originalFields[idx]]: row[idx] }),
+        {},
+      );
+    });
+
     // Process for each configuration
     for (const currentConfig of configs) {
       const PODCAST_IDS = currentConfig.PODCAST_IDS;
@@ -136,14 +144,6 @@ export const handler = async (event) => {
       const SECRET_KEY = currentConfig.SECRET_KEY;
       const DESTINATION_BUCKET = currentConfig.DESTINATION_BUCKET;
       const DESTINATION_PREFIX = currentConfig.DESTINATION_PREFIX;
-
-      // skip the initial rows, map the rest to objects with fieldnames as keys
-      const mappedRows = rows.slice(2).map((row) => {
-        return originalFields.reduce(
-          (acc, val, idx) => ({ ...acc, [originalFields[idx]]: row[idx] }),
-          {},
-        );
-      });
 
       // podcast id and episode guid (only works for dovetail3-cdn requests)
       const datas = mappedRows.filter((data) => {
