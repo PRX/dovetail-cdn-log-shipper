@@ -1,2 +1,2 @@
-nodejs 20.9.0 # Should match the AWS Lambda runtime being used
+nodejs 24.11.1 # Should match the AWS Lambda runtime being used
 ruby 3.3.0
