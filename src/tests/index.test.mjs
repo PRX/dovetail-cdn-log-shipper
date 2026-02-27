@@ -24,7 +24,7 @@ let resetCachedConfigs;
 
 // Dynamically import the module after setting up mocks
 beforeAll(async () => {
-  const module = await import("./index.js");
+  const module = await import("../shipper/index.mjs");
   s3 = module.s3;
   loadConfigs = module.loadConfigs;
   handler = module.handler;
