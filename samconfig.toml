@@ -15,10 +15,10 @@ region = "us-east-1"
 #   "LogBucket=",
 #   "LogPrefix=",
 #   "DestinationBucket=",
-#   "DestinationPrefix=",
 #   "EnvironmentType=",
 #   "EnvironmentTypeAbbreviation=",
-#   "PodcastIds=",
+#   "ConfigBucket=",
+#   "ConfigKey=",
 # ]
 
 # sam build && sam deploy --config-env=prod
@@ -35,8 +35,8 @@ region = "us-east-1"
 #   "LogBucket=",
 #   "LogPrefix=",
 #   "DestinationBucket=",
-#   "DestinationPrefix=",
 #   "EnvironmentType=",
 #   "EnvironmentTypeAbbreviation=",
-#   "PodcastIds=",
+#   "ConfigBucket=",
+#   "ConfigKey=",
 # ]
