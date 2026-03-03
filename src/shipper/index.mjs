@@ -164,6 +164,11 @@ export const handler = async (event) => {
         } else if (!IGNORE_PATHS.includes(data["cs-uri-stem"])) {
           console.warn(`Non-dovetail3 uri: ${data["cs-uri-stem"]}`);
         }
+
+        // save the original IP and XFF for later use, since sometimes we anonymize them
+        data["prx-original-ip"] = data["c-ip"];
+        data["prx-original-xff"] = data["x-forwarded-for"];
+
         // Ensure PODCAST_IDS are numbers for comparison if data["prx-podcast-id"] is a string
         return PODCAST_IDS.includes(parseInt(data["prx-podcast-id"]));
       });
@@ -174,8 +179,11 @@ export const handler = async (event) => {
 
       // calculate listener_ids
       datas.forEach((data) => {
-        // use leftmost XFF or IP
-        const leftMostIp = findIp(data["x-forwarded-for"], data["c-ip"]);
+        // use leftmost XFF or IP, from the original values
+        const leftMostIp = findIp(
+          data["prx-original-xff"],
+          data["prx-original-ip"],
+        );
 
         // truncate ipv6 but not ipv4
         const truncatedIp = leftMostIp.includes(":")
@@ -195,19 +203,24 @@ export const handler = async (event) => {
       currentFields.push("prx-listener-id");
       currentFields.push("prx-hashed-ip");
 
-      // mask IP addresses
-      if (!currentConfig.FULL_IPS) {
-        datas.forEach((data) => {
-          data["c-ip"] = maskIp(data["c-ip"], "c-ip");
-          const xffParts = (data["x-forwarded-for"] || "")
+      // mask IP addresses if not FULL_IPS
+      datas.forEach((data) => {
+        if (currentConfig.FULL_IPS) {
+          // restore the c-ip and x-forwarded-for from the original values
+          data["c-ip"] = data["prx-original-ip"];
+          data["x-forwarded-for"] = data["prx-original-xff"];
+        } else {
+          // mask c-ip and x-forwarded-for (using the original values, not the possibly masked ones)
+          data["c-ip"] = maskIp(data["prx-original-ip"], "c-ip");
+          const xffParts = (data["prx-original-xff"] || "")
             .split(",")
             .map((s) => s.trim())
             .filter((s) => s);
           data["x-forwarded-for"] = xffParts
             .map((ip) => maskIp(ip, "x-forwarded-for"))
             .join(", ");
-        });
-      }
+        }
+      });
 
       // write to tsv and gzip
       const tsv =
