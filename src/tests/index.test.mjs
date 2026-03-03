@@ -180,13 +180,15 @@ describe("handler", () => {
       SECRET_KEY: "secret1",
       DESTINATION_BUCKET: ["dest-bucket-1"],
       DESTINATION_PREFIX: "prefix1",
+      FULL_IPS: false,
     };
     const mockConfig2 = {
-      PODCAST_IDS: [2],
+      PODCAST_IDS: [1, 2],
       IGNORE_PATHS: [],
       SECRET_KEY: "secret2",
       DESTINATION_BUCKET: ["dest-bucket-2"],
       DESTINATION_PREFIX: "prefix2",
+      FULL_IPS: true,
     };
 
     const combinedConfigs = [mockConfig1, mockConfig2];
@@ -250,6 +252,7 @@ describe("handler", () => {
     const processedContent1 = gunzippedProcessed1.toString("utf-8");
     expect(processedContent1).toContain("1\tepisode-a-guid");
     expect(processedContent1).not.toContain("2\tepisode-b-guid");
+    expect(processedContent1).toContain("192.168.1.0");
 
     // Verify second put call (config2)
     expect(putCalls[1].args[0].input.Bucket).toBe("dest-bucket-2");
@@ -258,7 +261,9 @@ describe("handler", () => {
     const gunzippedProcessed2 = await gunzip(processedBuffer2);
     const processedContent2 = gunzippedProcessed2.toString("utf-8");
     expect(processedContent2).toContain("2\tepisode-b-guid");
-    expect(processedContent2).not.toContain("1\tepisode-a-guid");
+    expect(processedContent2).toContain("1\tepisode-a-guid");
+    expect(processedContent2).toContain("192.168.1.1");
+    expect(processedContent2).toContain("192.168.1.2");
   });
 
   test("should handle logs with IPV6 addresses", async () => {
