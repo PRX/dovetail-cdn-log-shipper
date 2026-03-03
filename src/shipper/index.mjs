@@ -206,7 +206,7 @@ export const handler = async (event) => {
       // mask IP addresses if not FULL_IPS
       datas.forEach((data) => {
         if (currentConfig.FULL_IPS) {
-          // restore the c-ip and x-forwarded-for from the original values, masking if needed
+          // restore the c-ip and x-forwarded-for from the original values
           data["c-ip"] = data["prx-original-ip"];
           data["x-forwarded-for"] = data["prx-original-xff"];
         } else {
