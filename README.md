@@ -12,5 +12,5 @@ sam build && sam deploy
 **Production:**
 
 ```sh
-sam build && sam deploy --config-env=prod
+sam build && sam deploy --config-env=production
 ```

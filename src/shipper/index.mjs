@@ -134,6 +134,12 @@ export const handler = async (event) => {
       );
     });
 
+    mappedRows.forEach((data) => {
+      // save the original IP and XFF for later use, since sometimes we anonymize them
+      data["prx-original-ip"] = data["c-ip"];
+      data["prx-original-xff"] = data["x-forwarded-for"];
+    });
+
     // Process for each configuration
     for (const currentConfig of configs) {
       const PODCAST_IDS = currentConfig.PODCAST_IDS;
@@ -164,10 +170,6 @@ export const handler = async (event) => {
         } else if (!IGNORE_PATHS.includes(data["cs-uri-stem"])) {
           console.warn(`Non-dovetail3 uri: ${data["cs-uri-stem"]}`);
         }
-
-        // save the original IP and XFF for later use, since sometimes we anonymize them
-        data["prx-original-ip"] = data["c-ip"];
-        data["prx-original-xff"] = data["x-forwarded-for"];
 
         // Ensure PODCAST_IDS are numbers for comparison if data["prx-podcast-id"] is a string
         return PODCAST_IDS.includes(parseInt(data["prx-podcast-id"]));
