@@ -136,8 +136,8 @@ export const handler = async (event) => {
 
     mappedRows.forEach((data) => {
       // save the original IP and XFF for later use, since sometimes we anonymize them
-      data["prx-original-ip"] = `${data["c-ip"]}`;
-      data["prx-original-xff"] = `${data["x-forwarded-for"]}`;
+      data["prx-original-ip"] = data["c-ip"];
+      data["prx-original-xff"] = data["x-forwarded-for"];
     });
 
     // Process for each configuration
