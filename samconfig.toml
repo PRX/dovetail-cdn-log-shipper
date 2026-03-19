@@ -21,7 +21,7 @@ region = "us-east-1"
 #   "ConfigKey=",
 # ]
 
-# sam build && sam deploy --config-env=prod
+# sam build && sam deploy --config-env=production
 [production.deploy.parameters]
 profile = "prx-legacy"
 stack_name = "cdn-log-shipper-production"
